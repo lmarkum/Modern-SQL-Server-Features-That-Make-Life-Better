@@ -109,7 +109,7 @@ WHERE er.session_id <> @@SPID
 GO
 
 
-/***Demonstrating Temoporal Tables
+/***Demonstrating Temporal Tables
 
 Copyright Lee Markum July 2021
 
@@ -171,12 +171,13 @@ Change existing table to set up system-versioning by adding the required SysStar
 
 These columns will be used to determine when a version of the row was in the temporal/source table.
 */
+
 ALTER TABLE WinLossMajorNCAASchoolsBackup
 	ADD SysStartTime DATETIME2 GENERATED ALWAYS AS ROW START HIDDEN
 		     CONSTRAINT DF_SysStart DEFAULT SYSUTCDATETIME()
       , SysEndTime DATETIME2 GENERATED ALWAYS AS ROW END HIDDEN
-            CONSTRAINT DF_SysEnd DEFAULT CONVERT(DATETIME2, '9999-12-31 23:59:59.9999999'),
-        PERIOD FOR SYSTEM_TIME (SysStartTime, SysEndTime);
+            CONSTRAINT DF_SysEnd DEFAULT CONVERT(DATETIME2, '9999-12-31 23:59:59.9999999')
+        ,PERIOD FOR SYSTEM_TIME (SysStartTime, SysEndTime);
 GO
 /*
 Enable system-versioning using a named history table. 
@@ -197,7 +198,7 @@ FROM History.WinLossMajorNCAASchoolsBackup
 /*
 Update some rows. 
 
-Apparently Air Force statrted playing football in 1957. Let's change that!
+Apparently Air Force started playing football in 1957. Let's change that!
 
 */
 UPDATE dbo.WinLossMajorNCAASchoolsBackup
@@ -220,13 +221,71 @@ Note the System Start and End Time values for each row are recorded.
 
 This time range represents when this version of the record was "active" in the table dbo.WinLossMajorNCAASchoolsBackup
 */
-SELECT *
+SELECT SysStartTime, SysEndTime, *
 FROM History.WinLossMajorNCAASchoolsBackup;
 
 /*Post demo cleanup*/
 ALTER TABLE dbo.WinLossMajorNCAASchoolsBackup SET (System_Versioning = OFF);
 DROP TABLE History.WinLossMajorNCAASchoolsBackup;
 DROP SCHEMA History;
+GO
+
+/*Creating a table as a temporal table from the start*/
+
+CREATE SCHEMA History;
+GO
+DROP TABLE IF EXISTS dbo.Employee;
+GO
+
+CREATE TABLE dbo.Employee
+(
+ID INT IDENTITY(1,1) NOT NULL,
+LastName VARCHAR(100) NOT NULL,
+FirstName VARCHAR(75) NOT NULL,
+JobTitle VARCHAR(50) NOT NULL,
+BirthDate DATE NOT NULL,
+HireDate DATE NOT NULL,
+SysStartTime DATETIME2 GENERATED ALWAYS AS ROW START NOT NULL,
+SysEndTime DATETIME2 GENERATED ALWAYS AS ROW END NOT NULL,
+ PERIOD FOR SYSTEM_TIME (SysStartTime,SysEndTime),
+CONSTRAINT PK_Employees PRIMARY KEY CLUSTERED (ID),
+INDEX IX_LastName_FirstName (LastName,FirstName),
+
+)
+WITH (SYSTEM_VERSIONING = ON(HISTORY_TABLE = History.EmployeeHistory,
+/*By default history is kept permanently, but the below is one way to 
+specify how long to keep the data in the history table.
+Options for retention are DAYS, WEEKS, MONTHS, YEARS
+*/
+History_Retention_Period = 6 months
+));
+
+--ALTER TABLE dbo.Employee ADD CONSTRAINT Default_SysStart DEFAULT SYSUTCDATETIME() FOR SysStartTime;
+--ALTER TABLE dbo.Employee ADD CONSTRAINT Default_SysEndTime DEFAULT SYSUTCDATETIME() FOR SysEndTime;
+
+ALTER TABLE dbo.Employee SET (System_Versioning = OFF);
+DROP TABLE History.EmployeeHistory;
+DROP TABLE dbo.Employee;
+DROP SCHEMA History;
+
+/*
+https://learn.microsoft.com/en-us/sql/relational-databases/tables/changing-the-schema-of-a-system-versioned-temporal-table?view=sql-server-ver16
+
+https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-table-considerations-and-limitations?view=sql-server-ver16
+
+You can:
+Add a column to the temporal table and it is added for you to the history table.
+
+Change the data type of a column in the temporal table and it is changed for you in the history table.
+
+You can drop a column in the temporal table and it will be dropped from the history table.
+
+Some other types of changes, like truncating a table, require that system versioning be
+	set to OFF first, then make the change and then set system versioning on.
+
+
+
+*/
 
 /***Demonstrate T-SQL Enhancements***/
 
